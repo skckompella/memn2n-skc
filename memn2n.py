@@ -1,9 +1,9 @@
-import numpy as np
+
 from keras.models import Sequential
 from keras.layers.embeddings import Embedding
 from keras.layers import Activation, Dense, Merge, Permute, Dropout
 from keras.layers import LSTM
-from keras.preprocessing.sequence import pad_sequences
+from keras.callbacks import ModelCheckpoint
 
 
 class memn2n(object):
@@ -55,7 +55,16 @@ class memn2n(object):
 
         self.answer.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
 
-    def fit(self, inputs_train, queries_train, answers_train,inputs_test, queries_test, answers_test):
-        # Note: you could use a Graph model to avoid repeat the input twice
-        self.answer.fit([inputs_train, queries_train, inputs_train], answers_train,
-                        batch_size=32, nb_epoch=120,)
+
+    def initialize_checkpoints(self):
+        # checkpoint
+        self.filepath = "weights.best.hdf5"
+        self.checkpoint = ModelCheckpoint(self.filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+        self.callbacks_list = [self.checkpoint]
+
+    def fit(self, inputs_train, queries_train, answers_train):
+        self.answer.fit([inputs_train, queries_train, inputs_train], answers_train, batch_size=32, nb_epoch=120, validation_split=0.1)
+
+    def predict(self, inputs_test, queries_test, answers_test):
+        #return self.answer.predict([inputs_test, queries_test, inputs_test], batch_size=32, verbose=1)
+        return self.answer.test_on_batch([inputs_test, queries_test, inputs_test], answers_test)
