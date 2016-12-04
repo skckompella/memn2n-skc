@@ -2,6 +2,7 @@
 import numpy as np
 import re
 import os
+#from memn2n import memn2n
 from memn2n import memn2n
 from keras.preprocessing.sequence import pad_sequences
 
@@ -62,15 +63,20 @@ def load_task(data_dir, task_id, only_supporting=False):
     Returns a tuple containing the training and testing data for the task.
     '''
     assert task_id > 0 and task_id < 21
-
     files = os.listdir(data_dir)
     files = [os.path.join(data_dir, f) for f in files]
     s = 'qa{}_'.format(task_id)
+
     train_file = [f for f in files if s in f and 'train' in f][0]
     test_file = [f for f in files if s in f and 'test' in f][0]
     train_data = get_stories(open(train_file,'r'), only_supporting)
+
+    num_valid = int(0.1 * len(train_data)) #Defining the train-validation split
+    validation_data = train_data[-num_valid:]
+    train_data = train_data[0:-num_valid]
+
     test_data = get_stories(open(test_file,'r'), only_supporting)
-    return train_data, test_data
+    return train_data, validation_data, test_data
 
 
 def vectorize_stories(data, word_idx, story_maxlen, query_maxlen):
@@ -91,48 +97,58 @@ def vectorize_stories(data, word_idx, story_maxlen, query_maxlen):
 def main():
     train_stories = []
     test_stories = []
-    for task_id in range(1, NUM_TASKS+1):
-        train_stories, test_stories = load_task(PATH_TO_DATA, task_id)
 
+    #for task_id in range(1, NUM_TASKS+1):
+    #    train_stories, validation_stories, test_stories = load_task(PATH_TO_DATA, task_id)
 
-    vocab = sorted(reduce(lambda x, y: x | y, (set(story + q + [answer]) for story, q, answer in train_stories + test_stories)))
+    task_id = 1
+    train_stories, validation_stories, test_stories = load_task(PATH_TO_DATA, task_id)
+
+    vocab = sorted(reduce(lambda x, y: x | y, (set(story + q + [answer]) for story, q, answer in train_stories + validation_stories + test_stories)))
 
     vocab_size = len(vocab) + 1
-    story_maxlen = max(map(len, (x for x, _, _ in train_stories + test_stories)))
-    query_maxlen = max(map(len, (x for _, x, _ in train_stories + test_stories)))
+    story_maxlen = max(map(len, (x for x, _, _ in train_stories + validation_stories + test_stories)))
+    query_maxlen = max(map(len, (x for _, x, _ in train_stories + validation_stories + test_stories)))
 
-    print('-')
+    print('---------------------------------------------------------')
     print('Vocab size:', vocab_size, 'unique words')
     print('Story max length:', story_maxlen, 'words')
     print('Query max length:', query_maxlen, 'words')
     print('Number of training stories:', len(train_stories))
+    print('Number of validation stories:', len(validation_stories))
     print('Number of test stories:', len(test_stories))
-    print('-')
+    print('---------------------------------------------------------')
     print('Here\'s what a "story" tuple looks like (input, query, answer):')
     print(train_stories[0])
-    print('-')
+    print('---------------------------------------------------------')
     print('Vectorizing the word sequences...')
 
     word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
     inputs_train, queries_train, answers_train = vectorize_stories(train_stories, word_idx, story_maxlen, query_maxlen)
+    inputs_validation, queries_validation, answers_validation = vectorize_stories(validation_stories, word_idx, story_maxlen, query_maxlen)
     inputs_test, queries_test, answers_test = vectorize_stories(test_stories, word_idx, story_maxlen, query_maxlen)
 
-    print('-')
+    print('---------------------------------------------------------')
     print('inputs: integer tensor of shape (samples, max_length)')
     print('inputs_train shape:', inputs_train.shape)
+    print('inputs_validation shape:', inputs_validation.shape)
     print('inputs_test shape:', inputs_test.shape)
-    print('-')
+    print('---------------------------------------------------------')
     print('queries: integer tensor of shape (samples, max_length)')
     print('queries_train shape:', queries_train.shape)
+    print('queries_train shape:', queries_validation.shape)
     print('queries_test shape:', queries_test.shape)
-    print('-')
+    print('---------------------------------------------------------')
     print('answers: binary (1 or 0) tensor of shape (samples, vocab_size)')
     print('answers_train shape:', answers_train.shape)
+    print('answers_train shape:', answers_validation.shape)
     print('answers_test shape:', answers_test.shape)
-    print('-')
+    print('---------------------------------------------------------')
     print('Compiling...')
+
     model = memn2n(vocab_size, story_maxlen, query_maxlen)
-    model.fit(inputs_train, queries_train, answers_train, inputs_test, queries_test, answers_test)
+
+    model.fit(inputs_train, queries_train, answers_train, inputs_validation, queries_validation, answers_validation)
 
 if __name__ == '__main__':
     main()
